@@ -2,8 +2,8 @@
 # Cato vSocket GCP HA (base module)
 # ------------------------------------------------------------------------------
 module "vsocket_gcp_ha" {
-  source = "catonetworks/vsocket-gcp-ha/cato"
-  #source = "../terraform-cato-vsocket-gcp-ha"
+  #source = "catonetworks/vsocket-gcp-ha/cato"
+  source = "../terraform-cato-vsocket-gcp-ha"
 
   token      = var.token
   account_id = var.account_id
@@ -17,6 +17,7 @@ module "vsocket_gcp_ha" {
   region         = var.region
   primary_zone   = var.primary_zone
   secondary_zone = var.secondary_zone
+  ha             = var.ha
 
   vpc_mgmt_name = var.vpc_mgmt_name
   vpc_wan_name  = var.vpc_wan_name
@@ -219,12 +220,13 @@ resource "google_network_connectivity_spoke" "router_appliance" {
 resource "google_compute_router_interface" "primary" {
   count = var.enable_cloud_router && var.enable_bgp ? 1 : 0
 
-  name               = "${local.cloud_router_name}-primary"
-  router             = google_compute_router.lan_router[0].name
-  region             = var.region
-  project            = local.security_project_id
-  subnetwork         = local.lan_subnet_self_link
-  private_ip_address = var.cloud_router_bgp_interface_ip_primary
+  name                = "${local.cloud_router_name}-primary"
+  router              = google_compute_router.lan_router[0].name
+  region              = var.region
+  project             = local.security_project_id
+  subnetwork          = local.lan_subnet_self_link
+  private_ip_address  = var.cloud_router_bgp_interface_ip_primary
+  redundant_interface = local.enable_redundant_router_interface ? google_compute_router_interface.secondary[0].name : null
 
   depends_on = [google_network_connectivity_spoke.router_appliance]
 }
@@ -263,15 +265,14 @@ resource "google_compute_router_peer" "primary" {
 # --- Secondary BGP session (Cloud Router ↔ secondary vSocket, HA) ---
 
 resource "google_compute_router_interface" "secondary" {
-  count = local.enable_secondary_bgp ? 1 : 0
+  count = local.enable_redundant_router_interface ? 1 : 0
 
-  name                = "${local.cloud_router_name}-secondary"
-  router              = google_compute_router.lan_router[0].name
-  region              = var.region
-  project             = local.security_project_id
-  subnetwork          = local.lan_subnet_self_link
-  private_ip_address  = var.cloud_router_bgp_interface_ip_secondary
-  redundant_interface = google_compute_router_interface.primary[0].name
+  name               = "${local.cloud_router_name}-secondary"
+  router             = google_compute_router.lan_router[0].name
+  region             = var.region
+  project            = local.security_project_id
+  subnetwork         = local.lan_subnet_self_link
+  private_ip_address = local.cloud_router_bgp_interface_ip_secondary_effective
 
   depends_on = [google_network_connectivity_spoke.router_appliance]
 }

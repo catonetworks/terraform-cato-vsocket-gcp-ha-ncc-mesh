@@ -103,6 +103,12 @@ variable "secondary_zone" {
   default     = null
 }
 
+variable "ha" {
+  description = "Deploy vSocket in HA mode (primary+secondary). Set to false for non-HA (single vSocket)."
+  type        = bool
+  default     = true
+}
+
 variable "vpc_mgmt_name" {
   type    = string
   default = null
@@ -205,12 +211,24 @@ variable "network_tier" {
 }
 
 variable "mgmt_network_ip_primary" { type = string }
-variable "mgmt_network_ip_secondary" { type = string }
+variable "mgmt_network_ip_secondary" {
+  type    = string
+  default = null
+}
 variable "wan_network_ip_primary" { type = string }
-variable "wan_network_ip_secondary" { type = string }
+variable "wan_network_ip_secondary" {
+  type    = string
+  default = null
+}
 variable "lan_network_ip_primary" { type = string }
-variable "lan_network_ip_secondary" { type = string }
-variable "load_balancer_ip" { type = string }
+variable "lan_network_ip_secondary" {
+  type    = string
+  default = null
+}
+variable "load_balancer_ip" {
+  type    = string
+  default = null
+}
 
 variable "public_ip_mgmt" {
   type    = bool

@@ -36,9 +36,11 @@ locals {
     local.auto_advertised_client_ranges,
   )
 
-  cloud_router_name    = var.cloud_router_name != null ? var.cloud_router_name : "${var.site_name}-lan-router"
-  lan_subnet_self_link = "projects/${local.security_project_id}/regions/${var.region}/subnetworks/${module.vsocket_gcp_ha.subnet_lan_name}"
-  enable_secondary_bgp = var.enable_cloud_router && var.enable_bgp && var.cloud_router_bgp_interface_ip_secondary != null
+  cloud_router_name                                 = var.cloud_router_name != null ? var.cloud_router_name : "${var.site_name}-lan-router"
+  lan_subnet_self_link                              = "projects/${local.security_project_id}/regions/${var.region}/subnetworks/${module.vsocket_gcp_ha.subnet_lan_name}"
+  enable_redundant_router_interface                 = var.enable_cloud_router && var.enable_bgp
+  cloud_router_bgp_interface_ip_secondary_effective = coalesce(var.cloud_router_bgp_interface_ip_secondary, cidrhost(var.subnet_lan_cidr, 11))
+  enable_secondary_bgp                              = var.ha && var.enable_cloud_router && var.enable_bgp && var.cloud_router_bgp_interface_ip_secondary != null
 
   primary_vm_self_link = (
     var.enable_bgp && var.primary_zone != null
@@ -46,12 +48,12 @@ locals {
     : null
   )
   secondary_vm_self_link = (
-    local.enable_secondary_bgp && var.secondary_zone != null
+    var.ha && local.enable_secondary_bgp && var.secondary_zone != null
     ? "projects/${local.security_project_id}/zones/${var.secondary_zone}/instances/${module.vsocket_gcp_ha.secondary_vm_instance_name}"
     : null
   )
   bgp_firewall_source_ranges = compact([
     var.cloud_router_bgp_interface_ip_primary != null ? "${var.cloud_router_bgp_interface_ip_primary}/32" : "",
-    var.cloud_router_bgp_interface_ip_secondary != null ? "${var.cloud_router_bgp_interface_ip_secondary}/32" : "",
+    local.enable_redundant_router_interface ? "${local.cloud_router_bgp_interface_ip_secondary_effective}/32" : "",
   ])
 }

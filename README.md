@@ -1,4 +1,4 @@
-# Cato vSocket GCP HA with NCC (Network Connectivity Center)
+# Cato vSocket GCP with NCC (Network Connectivity Center)
 
 This Terraform module wraps the [Cato vSocket GCP HA module](https://github.com/catonetworks/terraform-cato-vsocket-gcp-ha) and adds **GCP Network Connectivity Center (NCC)** so that:
 
@@ -22,44 +22,75 @@ By default this module calls the vSocket HA module from a local path:
 
 Use this module instead of the vSocket HA module when you want NCC and SASE (client internet only via vSocket). Pass the same variables you would to the vSocket HA module, plus NCC-specific ones.
 
-### Example
+By default, deployments are **HA** (`ha = true`). To deploy a **non-HA** single vSocket, set `ha = false` and omit secondary IP/zone inputs.
+
+### Example (aligned with `vsocket-ha-ncc-router-bgp`)
 
 ```hcl
 module "vsocket_gcp_ha_ncc" {
-  source = "../terraform-cato-vsocket-gcp-ha-ncc"
-  # Or: source = "path/to/terraform-cato-vsocket-gcp-ha-ncc"
+  source = "../../../../../terraform-cato-vsocket-gcp-ha-ncc-mesh"
 
   vsocket_module_source = "../terraform-cato-vsocket-gcp-ha"  # optional; this is the default
 
   token      = var.token
   account_id = var.account_id
-  site_name  = "my-site"
-  site_description = "My vSocket site with NCC"
-  region     = "us-central1"
+  baseurl    = var.baseurl
+
+  site_name        = "security-bgp"
+  site_description = "Security project vSocket with NCC + Cloud Router + BGP"
+  region           = "europe-west1"
+  primary_zone     = "europe-west1-b"
+  ha               = false
 
   subnet_mgmt_cidr = "10.3.1.0/24"
-  subnet_wan_cidr  = "10.3.2.0/24"
-  subnet_lan_cidr  = "10.3.3.0/24"
+  subnet_wan_cidr  = "10.4.2.8/29"
+  subnet_lan_cidr  = "10.4.3.0/24"
 
-  mgmt_network_ip_primary   = "10.3.1.4"
-  mgmt_network_ip_secondary = "10.3.1.5"
-  wan_network_ip_primary   = "10.3.2.4"
-  wan_network_ip_secondary = "10.3.2.5"
-  lan_network_ip_primary   = "10.3.3.4"
-  lan_network_ip_secondary = "10.3.3.5"
-  load_balancer_ip         = "10.3.3.6"
+  mgmt_network_ip_primary = "10.4.1.4"
+  wan_network_ip_primary  = "10.4.2.10"
+  lan_network_ip_primary  = "10.4.3.4"
+  # secondary_* and load_balancer_ip are optional in non-HA
 
-  # NCC: client spokes (client internet only via vSocket)
+  # NCC: STAR topology forces spoke-to-spoke through center/vSocket path
+  ncc_spoke_isolation = true
   ncc_client_spokes = {
-    "app" = {
-      project_id      = "my-app-project"
-      vpc_network_uri = "https://www.googleapis.com/compute/v1/projects/my-app-project/global/networks/default"
+    "web-tier" = {
+      project_id      = "web-test-484208"
+      vpc_network_uri = "https://www.googleapis.com/compute/v1/projects/web-test-484208/global/networks/web-vpc-1"
       export_ranges   = ["10.1.0.0/16"]
     }
-    "data" = {
-      project_id      = "my-data-project"
-      vpc_network_uri = "https://www.googleapis.com/compute/v1/projects/my-data-project/global/networks/vpc-data"
+    "app-tier" = {
+      project_id      = "app-test-484208"
+      vpc_network_uri = "https://www.googleapis.com/compute/v1/projects/app-test-484208/global/networks/app-vpc-1"
       export_ranges   = ["10.2.0.0/16"]
+    }
+  }
+
+  # Cloud Router + BGP
+  enable_cloud_router                   = true
+  enable_bgp                            = true
+  cloud_router_asn                      = 64520
+  cato_bgp_asn                          = 64515
+  cloud_router_bgp_interface_ip_primary = "10.4.3.10"
+
+  # Cato-side BGP advertisements (required for inspected inter-spoke path)
+  cato_bgp_peer_advertise_default_route = true
+  cato_bgp_peer_summary_routes = [
+    { route = "10.1.0.0/16" },
+    { route = "10.2.0.0/16" },
+  ]
+
+  # Make summary routes eligible for advertisement on Cato side
+  routed_networks = {
+    web-tier = {
+      subnet          = "10.1.0.0/16"
+      interface_index = "LAN1"
+      gateway         = "10.4.3.1"
+    }
+    app-tier = {
+      subnet          = "10.2.0.0/16"
+      interface_index = "LAN1"
+      gateway         = "10.4.3.1"
     }
   }
 }
@@ -115,34 +146,73 @@ Set `create_cato_bgp_peer = false` to skip automatic Cato configuration and mana
 
 Without vSocket BGP advertisements (automatic or manual), no routes propagate from the Router Appliance spoke and client VPCs have no transit path through the security VPC.
 
-### Example with Cloud Router + BGP
+### Example with Cloud Router + BGP (non-HA, recommended for this example)
 
 ```hcl
 module "vsocket_gcp_ha_ncc" {
-  source = "../terraform-cato-vsocket-gcp-ha-ncc"
+  source = "../../../../../terraform-cato-vsocket-gcp-ha-ncc-mesh"
 
   # ... base + NCC configuration ...
 
-  primary_zone   = "us-central1-a"
-  secondary_zone = "us-central1-b"
+  primary_zone = "europe-west1-b"
+  ha           = false
 
   # Cloud Router (GCP side)
   enable_cloud_router = true
   cloud_router_asn    = 64520
 
   # BGP peering with vSocket (GCP side)
-  enable_bgp                              = true
-  cato_bgp_asn                            = 64515
-  cloud_router_bgp_interface_ip_primary   = "10.3.3.10"
-  cloud_router_bgp_interface_ip_secondary = "10.3.3.11"  # optional — enables HA BGP
+  enable_bgp                            = true
+  cato_bgp_asn                          = 64515
+  cloud_router_bgp_interface_ip_primary = "10.4.3.10"
 
   # BGP tuning
   advertised_route_priority = 100
   enable_bfd                = true
 
-  # Cato-side BGP peer (auto-configured via Cato API)
-  create_cato_bgp_peer                  = true   # default
-  cato_bgp_peer_advertise_default_route = true   # advertise 0.0.0.0/0
+  # Cato-side BGP peer (auto-configured via Cato API) — explicit summaries
+  create_cato_bgp_peer                  = true
+  cato_bgp_peer_advertise_default_route = true
+  cato_bgp_peer_summary_routes = [
+    { route = "10.1.0.0/16" },
+    { route = "10.2.0.0/16" },
+  ]
+
+  routed_networks = {
+    web-tier = {
+      subnet          = "10.1.0.0/16"
+      interface_index = "LAN1"
+      gateway         = "10.4.3.1"
+    }
+    app-tier = {
+      subnet          = "10.2.0.0/16"
+      interface_index = "LAN1"
+      gateway         = "10.4.3.1"
+    }
+  }
+}
+```
+
+### Example with non-HA vSocket
+
+```hcl
+module "vsocket_gcp_ha_ncc" {
+  source = "../terraform-cato-vsocket-gcp-ha-ncc"
+
+  # ... base + NCC configuration ...
+  ha           = false
+  primary_zone = "us-central1-a"
+
+  # only primary vSocket IPs are required
+  mgmt_network_ip_primary = "10.3.1.4"
+  wan_network_ip_primary  = "10.3.2.4"
+  lan_network_ip_primary  = "10.3.3.4"
+
+  # optional BGP (single peer)
+  enable_cloud_router                    = true
+  enable_bgp                             = true
+  cloud_router_bgp_interface_ip_primary  = "10.3.3.10"
+  cloud_router_bgp_interface_ip_secondary = null
 }
 ```
 
@@ -180,6 +250,7 @@ This eliminates the NCC route priority concern (no competing VPC spoke routes be
 | Name | Description | Default |
 |------|-------------|---------|
 | `enable_cloud_router` | Create a Cloud Router in the LAN VPC. | `false` |
+| `ha` | Deploy in HA mode (`true`) or non-HA single vSocket (`false`). | `true` |
 | `cloud_router_name` | Name of the Cloud Router. | `"{site_name}-lan-router"` |
 | `cloud_router_asn` | Cloud Router BGP ASN. | `64520` |
 | `cloud_router_advertised_ip_ranges` | IP ranges to advertise to BGP peers (list of `{range, description}`). | `[]` |

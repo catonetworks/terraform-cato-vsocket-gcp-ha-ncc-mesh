@@ -43,35 +43,35 @@ output "primary_vm_wan_public_ip" {
 }
 output "secondary_boot_disk_name" {
   description = "Boot disk name for the secondary vSocket VM"
-  value       = module.vsocket_gcp_ha.secondary_boot_disk_name
+  value       = var.ha ? module.vsocket_gcp_ha.secondary_boot_disk_name : null
 }
 output "secondary_boot_disk_self_link" {
   description = "Self-link for the secondary vSocket boot disk"
-  value       = module.vsocket_gcp_ha.secondary_boot_disk_self_link
+  value       = var.ha ? module.vsocket_gcp_ha.secondary_boot_disk_self_link : null
 }
 output "secondary_vm_instance_name" {
   description = "Name of the secondary vSocket VM instance"
-  value       = module.vsocket_gcp_ha.secondary_vm_instance_name
+  value       = var.ha ? module.vsocket_gcp_ha.secondary_vm_instance_name : null
 }
 output "secondary_vm_mgmt_network_ip" {
   description = "Management network private IP of the secondary vSocket VM"
-  value       = module.vsocket_gcp_ha.secondary_vm_mgmt_network_ip
+  value       = var.ha ? module.vsocket_gcp_ha.secondary_vm_mgmt_network_ip : null
 }
 output "secondary_vm_wan_network_ip" {
   description = "WAN network private IP of the secondary vSocket VM"
-  value       = module.vsocket_gcp_ha.secondary_vm_wan_network_ip
+  value       = var.ha ? module.vsocket_gcp_ha.secondary_vm_wan_network_ip : null
 }
 output "secondary_vm_lan_network_ip" {
   description = "LAN network private IP of the secondary vSocket VM"
-  value       = module.vsocket_gcp_ha.secondary_vm_lan_network_ip
+  value       = var.ha ? module.vsocket_gcp_ha.secondary_vm_lan_network_ip : null
 }
 output "secondary_vm_mgmt_public_ip" {
   description = "Management public IP of the secondary vSocket VM if assigned"
-  value       = module.vsocket_gcp_ha.secondary_vm_mgmt_public_ip
+  value       = var.ha ? module.vsocket_gcp_ha.secondary_vm_mgmt_public_ip : null
 }
 output "secondary_vm_wan_public_ip" {
   description = "WAN public IP of the secondary vSocket VM if assigned"
-  value       = module.vsocket_gcp_ha.secondary_vm_wan_public_ip
+  value       = var.ha ? module.vsocket_gcp_ha.secondary_vm_wan_public_ip : null
 }
 output "load_balancer_ip" {
   description = "IP address of the internal load balancer (floating IP)"
@@ -123,11 +123,11 @@ output "primary_wan_static_ip" {
 }
 output "secondary_mgmt_static_ip" {
   description = "Secondary management static IP address"
-  value       = module.vsocket_gcp_ha.secondary_mgmt_static_ip
+  value       = var.ha ? module.vsocket_gcp_ha.secondary_mgmt_static_ip : null
 }
 output "secondary_wan_static_ip" {
   description = "Secondary WAN static IP address"
-  value       = module.vsocket_gcp_ha.secondary_wan_static_ip
+  value       = var.ha ? module.vsocket_gcp_ha.secondary_wan_static_ip : null
 }
 
 # ------------------------------------------------------------------------------
