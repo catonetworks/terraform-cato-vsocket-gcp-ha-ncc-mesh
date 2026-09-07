@@ -2,8 +2,8 @@
 # Cato vSocket GCP HA (base module)
 # ------------------------------------------------------------------------------
 module "vsocket_gcp_ha" {
-  #source = "catonetworks/vsocket-gcp-ha/cato"
-  source = "../terraform-cato-vsocket-gcp-ha"
+  # Terraform requires module sources to be literal values.
+  source = "git::https://github.com/catonetworks/terraform-cato-vsocket-gcp-ha.git?ref=gcp_ncc_mvp"
 
   token      = var.token
   account_id = var.account_id
@@ -14,10 +14,11 @@ module "vsocket_gcp_ha" {
   site_location    = var.site_location
   site_type        = var.site_type
 
-  region         = var.region
-  primary_zone   = var.primary_zone
-  secondary_zone = var.secondary_zone
-  ha             = var.ha
+  region                     = var.region
+  primary_zone               = var.primary_zone
+  secondary_zone             = var.secondary_zone
+  ha                         = var.ha
+  configure_cloud_router_bgp = var.enable_cloud_router && var.enable_bgp
 
   vpc_mgmt_name = var.vpc_mgmt_name
   vpc_wan_name  = var.vpc_wan_name
@@ -91,7 +92,7 @@ resource "google_network_connectivity_hub" "ncc_hub" {
 }
 
 resource "google_network_connectivity_spoke" "ncc_security_spoke" {
-  name     = "${var.site_name}-security-spoke"
+  name     = "${local.ncc_hub_name}-security-spoke"
   location = "global"
   hub      = google_network_connectivity_hub.ncc_hub.id
   group    = local.ncc_center_group_id
@@ -105,7 +106,7 @@ resource "google_network_connectivity_spoke" "ncc_security_spoke" {
 
 resource "google_network_connectivity_spoke" "ncc_client_spoke" {
   for_each = var.ncc_client_spokes
-  name     = "${var.site_name}-${each.key}-spoke"
+  name     = "${local.ncc_hub_name}-${each.key}-spoke"
   location = "global"
   project  = each.value.project_id
   hub      = google_network_connectivity_hub.ncc_hub.id
@@ -121,7 +122,7 @@ resource "google_network_connectivity_spoke" "ncc_client_spoke" {
 # Policy-based routes so client-originated traffic (arriving via NCC) is sent to the vSocket
 resource "google_network_connectivity_policy_based_route" "route_client_to_socket" {
   for_each = toset(local.ncc_client_source_ranges)
-  name     = "${local.load_balancer_name}-route-client-to-socket-${replace(replace(each.value, ".", "-"), "/", "-")}"
+  name     = local.ncc_client_route_names[each.value]
   network  = local.vpc_lan_id
   priority = 1000
 
@@ -175,7 +176,7 @@ resource "google_compute_router" "lan_router" {
 resource "google_network_connectivity_spoke" "router_appliance" {
   count = var.enable_cloud_router && var.enable_bgp ? 1 : 0
 
-  name     = "${var.site_name}-router-appliance-spoke"
+  name     = "${local.ncc_hub_name}-router-appliance-spoke"
   location = var.region
   hub      = google_network_connectivity_hub.ncc_hub.id
   group    = local.ncc_center_group_id
@@ -244,16 +245,6 @@ resource "google_compute_router_peer" "primary" {
   peer_asn                  = var.cato_bgp_asn
   advertised_route_priority = var.advertised_route_priority
 
-  dynamic "bfd" {
-    for_each = var.enable_bfd ? [1] : []
-    content {
-      session_initialization_mode = "ACTIVE"
-      min_transmit_interval       = var.bfd_min_transmit_interval
-      min_receive_interval        = var.bfd_min_receive_interval
-      multiplier                  = var.bfd_multiplier
-    }
-  }
-
   # When HA BGP is enabled, primary peer must be created only after the
   # secondary (redundant) interface exists, otherwise GCP rejects it.
   depends_on = [
@@ -290,39 +281,21 @@ resource "google_compute_router_peer" "secondary" {
   peer_asn                  = var.cato_bgp_asn
   advertised_route_priority = var.advertised_route_priority + 100
 
-  dynamic "bfd" {
-    for_each = var.enable_bfd ? [1] : []
-    content {
-      session_initialization_mode = "ACTIVE"
-      min_transmit_interval       = var.bfd_min_transmit_interval
-      min_receive_interval        = var.bfd_min_receive_interval
-      multiplier                  = var.bfd_multiplier
-    }
-  }
-
   depends_on = [google_network_connectivity_spoke.router_appliance]
 }
 
-# --- Firewall rule for BGP + BFD traffic ---
+# --- Firewall rule for BGP traffic ---
 
 resource "google_compute_firewall" "allow_bgp" {
   count = var.enable_cloud_router && var.enable_bgp && var.create_bgp_firewall_rule ? 1 : 0
 
-  name    = "${var.site_name}-allow-bgp"
+  name    = "${local.ncc_hub_name}-allow-bgp"
   network = local.vpc_lan_id
   project = local.security_project_id
 
   allow {
     protocol = "tcp"
     ports    = ["179"]
-  }
-
-  dynamic "allow" {
-    for_each = var.enable_bfd ? [1] : []
-    content {
-      protocol = "udp"
-      ports    = ["3784", "3785"]
-    }
   }
 
   source_ranges = local.bgp_firewall_source_ranges
@@ -346,6 +319,7 @@ resource "cato_bgp_peer" "primary" {
   peer_asn       = var.cloud_router_asn
   peer_ip        = var.cloud_router_bgp_interface_ip_primary
   metric         = var.cato_bgp_peer_metric
+  md5_auth_key   = ""
   default_action = var.cato_bgp_peer_default_action
 
   advertise_default_route  = var.cato_bgp_peer_advertise_default_route
@@ -353,12 +327,10 @@ resource "cato_bgp_peer" "primary" {
   advertise_summary_routes = length(var.cato_bgp_peer_summary_routes) > 0
   summary_route            = var.cato_bgp_peer_summary_routes
 
-  bfd_enabled = var.enable_cato_bfd
-  bfd_settings = var.enable_cato_bfd ? {
-    transmit_interval = var.bfd_min_transmit_interval
-    receive_interval  = var.bfd_min_receive_interval
-    multiplier        = var.bfd_multiplier
-  } : null
+  lifecycle {
+    # The API may return disabled BFD settings; BFD is not managed by this module.
+    ignore_changes = [bfd_settings]
+  }
 
   depends_on = [google_compute_router_peer.primary]
 }
@@ -372,6 +344,7 @@ resource "cato_bgp_peer" "secondary" {
   peer_asn       = var.cloud_router_asn
   peer_ip        = var.cloud_router_bgp_interface_ip_secondary
   metric         = var.cato_bgp_peer_metric
+  md5_auth_key   = ""
   default_action = var.cato_bgp_peer_default_action
 
   advertise_default_route  = var.cato_bgp_peer_advertise_default_route
@@ -379,12 +352,10 @@ resource "cato_bgp_peer" "secondary" {
   advertise_summary_routes = length(var.cato_bgp_peer_summary_routes) > 0
   summary_route            = var.cato_bgp_peer_summary_routes
 
-  bfd_enabled = var.enable_cato_bfd
-  bfd_settings = var.enable_cato_bfd ? {
-    transmit_interval = var.bfd_min_transmit_interval
-    receive_interval  = var.bfd_min_receive_interval
-    multiplier        = var.bfd_multiplier
-  } : null
+  lifecycle {
+    # The API may return disabled BFD settings; BFD is not managed by this module.
+    ignore_changes = [bfd_settings]
+  }
 
   depends_on = [google_compute_router_peer.secondary]
 }
