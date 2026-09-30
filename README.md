@@ -14,9 +14,9 @@ This Terraform module wraps the [Cato vSocket GCP HA module](https://github.com/
 
 ## Module source
 
-By default this module calls the vSocket HA module from a local path:
-
-- **`vsocket_module_source`** (default: `"../terraform-cato-vsocket-gcp-ha"`) — Use this when the two repos are side by side. Override with a registry source (e.g. `"catonetworks/vsocket-gcp-ha/cato"`) or another path as needed.
+The vSocket HA module is loaded from the public GitHub `gcp_ncc_mvp` branch.
+Terraform module sources must be literal values and cannot be selected through
+an input variable.
 
 ## Usage
 
@@ -29,8 +29,6 @@ By default, deployments are **HA** (`ha = true`). To deploy a **non-HA** single 
 ```hcl
 module "vsocket_gcp_ha_ncc" {
   source = "../../../../../terraform-cato-vsocket-gcp-ha-ncc-mesh"
-
-  vsocket_module_source = "../terraform-cato-vsocket-gcp-ha"  # optional; this is the default
 
   token      = var.token
   account_id = var.account_id
@@ -168,7 +166,6 @@ module "vsocket_gcp_ha_ncc" {
 
   # BGP tuning
   advertised_route_priority = 100
-  enable_bfd                = true
 
   # Cato-side BGP peer (auto-configured via Cato API) — explicit summaries
   create_cato_bgp_peer                  = true
@@ -259,11 +256,10 @@ This eliminates the NCC route priority concern (no competing VPC spoke routes be
 | `cloud_router_bgp_interface_ip_primary` | Cloud Router primary BGP interface IP (in LAN subnet). | — |
 | `cloud_router_bgp_interface_ip_secondary` | Cloud Router secondary BGP interface IP (HA). | `null` |
 | `advertised_route_priority` | BGP route priority (lower = preferred). Secondary uses +100. | `100` |
-| `enable_bfd` | Enable BFD for faster failure detection. | `true` |
-| `bfd_min_transmit_interval` | BFD min transmit interval (ms). | `1000` |
-| `bfd_min_receive_interval` | BFD min receive interval (ms). | `1000` |
-| `bfd_multiplier` | BFD detection multiplier (5–16). | `5` |
-| `create_bgp_firewall_rule` | Create firewall rules for BGP/BFD traffic. | `true` |
+| `create_bgp_firewall_rule` | Create a firewall rule for BGP traffic. | `true` |
+
+When `enable_cloud_router` and `enable_bgp` are both enabled, the wrapper
+automatically applies the Cato `updateHa` setting before the vSockets boot.
 
 ## Cato BGP peer variables
 

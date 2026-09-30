@@ -7,6 +7,10 @@ locals {
   ncc_security_export     = contains(local.ncc_security_export_raw, "0.0.0.0/0") ? ["0.0.0.0/0"] : local.ncc_security_export_raw
   # Client-originated traffic source ranges: from variable or derived from ncc_client_spokes export_ranges
   ncc_client_source_ranges = length(var.ncc_client_traffic_source_ranges) > 0 ? var.ncc_client_traffic_source_ranges : flatten([for _, s in var.ncc_client_spokes : coalesce(s.export_ranges, [])])
+  ncc_client_route_names = {
+    for cidr in local.ncc_client_source_ranges :
+    cidr => "${substr(local.ncc_hub_name, 0, 25)}-route-${substr(sha1("${local.ncc_hub_name}:${cidr}"), 0, 12)}"
+  }
 
   # NCC STAR preset groups
   ncc_center_group_id = (

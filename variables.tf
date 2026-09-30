@@ -1,13 +1,4 @@
 # ------------------------------------------------------------------------------
-# vSocket GCP HA module source (pass-through)
-# ------------------------------------------------------------------------------
-variable "vsocket_module_source" {
-  description = "Source for the Cato vSocket GCP HA Terraform module (path or registry). Use ../terraform-cato-vsocket-gcp-ha when the two modules are side by side."
-  type        = string
-  default     = "../terraform-cato-vsocket-gcp-ha"
-}
-
-# ------------------------------------------------------------------------------
 # All variables below are passed through to the vsocket GCP HA module
 # ------------------------------------------------------------------------------
 
@@ -241,9 +232,9 @@ variable "public_ip_wan" {
 
 variable "lan_firewall_rule_name" {
   type    = string
-  default = "allow-private-ranges-traffic-in-lan-subnet-fw-rule"
+  default = null
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{0,61}[a-z0-9]$", var.lan_firewall_rule_name))
+    condition     = var.lan_firewall_rule_name == null || can(regex("^[a-z][a-z0-9-]{0,61}[a-z0-9]$", var.lan_firewall_rule_name))
     error_message = "Firewall rule name must be 1-63 characters, start with a letter, and contain only lowercase letters, numbers, or hyphens."
   }
 }
@@ -411,36 +402,8 @@ variable "advertised_route_priority" {
   default     = 100
 }
 
-variable "enable_bfd" {
-  description = "Enable BFD (Bidirectional Forwarding Detection) on BGP peers for sub-second failure detection."
-  type        = bool
-  default     = true
-}
-
-variable "bfd_min_transmit_interval" {
-  description = "BFD minimum transmit interval in milliseconds."
-  type        = number
-  default     = 1000
-}
-
-variable "bfd_min_receive_interval" {
-  description = "BFD minimum receive interval in milliseconds."
-  type        = number
-  default     = 1000
-}
-
-variable "bfd_multiplier" {
-  description = "BFD detection multiplier (session declared down after multiplier consecutive missed packets)."
-  type        = number
-  default     = 5
-  validation {
-    condition     = var.bfd_multiplier >= 5 && var.bfd_multiplier <= 16
-    error_message = "BFD multiplier must be between 5 and 16."
-  }
-}
-
 variable "create_bgp_firewall_rule" {
-  description = "Create firewall rules allowing BGP (TCP/179) and BFD (UDP/3784-3785) traffic between Cloud Router and vSocket in the LAN VPC."
+  description = "Create a firewall rule allowing BGP (TCP/179) traffic between Cloud Router and vSocket in the LAN VPC."
   type        = bool
   default     = true
 }
@@ -497,10 +460,4 @@ variable "cato_bgp_peer_metric" {
   description = "Route preference metric for the Cato BGP peer (lower = preferred)."
   type        = number
   default     = 150
-}
-
-variable "enable_cato_bfd" {
-  description = "Enable BFD settings on cato_bgp_peer resources. Keep false for CLOUD_DC sites because Cato API allows BFD only for cloud interconnect and ipsec sites."
-  type        = bool
-  default     = false
 }
